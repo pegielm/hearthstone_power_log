@@ -3,7 +3,6 @@ import glob
 import time
 import tkinter as tk
 import threading
-import requests
 
 
 

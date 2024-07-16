@@ -2,12 +2,14 @@ import re
 import json
 import requests
 
+
 class parser:
-    def __init__(self, log_path="Power_bg2.log"):
+    def __init__(self, log_path="Power.log"):
         self.log_path = log_path
         self.cardnames = self.get_card_names()
         self.games = []
 
+        self.player = ""
         self.entity_list = {}
         self.leaderboard = [0] * 17
         self.players_heroes = {}
@@ -27,7 +29,7 @@ class parser:
         for card in self.cardnames:
             if card["id"] == card_id:
                 return card["name"]
-        return "-"
+        return None
     
     def print_players(self):
         players_keys = [entity["ID"] for entity in self.entity_list.values() if "HERO_ENTITY" in entity.get("tags", {})]
@@ -52,7 +54,7 @@ class parser:
         self.entity_list = {}
         self.leaderboard = [0] * 17
         self.players_heroes = {}
-        
+
         self.current_block = ""
         self.entity_id = 0
         self.block_started = False
@@ -79,7 +81,10 @@ class parser:
                     raise Exception("bad tag")
                 
                 if self.current_block in ["FULL_ENTITY - Creating", "FULL_ENTITY - Updating", "SHOW_ENTITY"]:
-                    self.entity_list[self.entity_id]["tags"][tag] = value
+                    try:
+                        self.entity_list[self.entity_id]["tags"][tag] = value
+                    except KeyError:
+                        pass
             elif log_type.startswith("Targets"):
                 self.current_block = "Source"
             elif log_type.startswith("Source"):
@@ -161,36 +166,65 @@ class parser:
                 if self.entity_id not in self.entity_list:
                     self.entity_list[self.entity_id] = {"ID": self.entity_id, "tags": {}}
                 self.entity_list[self.entity_id]["tags"][tag] = value
-                if tag == "PLAYER_LEADERBOARD_PLACE" and value != "0":
-                    hero = self.entity_list[self.entity_id]["CardID"]
+
+                if tag == "PLAYER_LEADERBOARD_PLACE":
+                    
                     try:
-                        self.leaderboard[int(value)] = hero
+                        hero = self.entity_list[self.entity_id]["CardID"]
+                        self.leaderboard[int(value)] = self.card_code_to_name(hero)
+                        with open("leaderboard.txt", 'a') as lf:
+                            lf.write(f"{self.leaderboard}\n")
                     except Exception:
                         pass
                 if tag == "HERO_ENTITY":
                     print("HERO", self.entity_id, value)
                     if value != "62":
-                        self.players_heroes[self.entity_id] = self.entity_list[value]["CardID"]
+                        try:
+                            hero = self.entity_list[value]["CardID"]
+                            hero = self.card_code_to_name(hero)
+                            if hero != "Bartender Bob":
+                                self.players_heroes[self.entity_id] = hero
+                        except KeyError:
+                            pass
                 if tag == "PLAYSTATE":
                     try:
                         print("PLAY", self.entity_id, value, self.entity_list[self.entity_id]["tags"]["HERO_ENTITY"])
                     except KeyError:
-                        print("! P ERROR", self.entity_id, value)
+                        pass
+                        #print("! P ERROR", self.entity_id, value)
                 if tag == "NUM_TURNS_IN_PLAY":
                     try:
                         hero = self.entity_list[self.entity_id]["tags"]["HERO_ENTITY"]
-                        print("TURN", self.entity_id, value)
+                        print(f"TURN, id={self.entity_id}, value={value}")
                     except Exception:
                         pass
                 if tag == "DAMAGE":
                     try:
                         check = self.entity_list[self.entity_id]["tags"]["PLAYER_LEADERBOARD_PLACE"]
                         hero = self.entity_list[self.entity_id]["CardID"]
-                        print("DMG", hero, self.entity_id, value)
+                        print(f"DMG, hero={hero}, id={self.entity_id}, value={value}")
                     except Exception:
                         pass
                 if tag == "STATE" and self.entity_id == "GameEntity":
                     print("GAME STATE:", value)
+                    if value == "COMPLETE":
+                        self.print_results()
+                        self.reset_game()
+                if tag == "ATTACKING" and value != "0":
+                    try:
+                        if self.card_code_to_name(self.entity_list[self.entity_id]["CardID"]) != None:
+                            print("ATTACKING", self.card_code_to_name(self.entity_list[self.entity_id]["CardID"]),f"{self.entity_list[self.entity_id]["tags"]["ATK"]}/{self.entity_list[self.entity_id]["tags"]["HEALTH"]} dmg={self.entity_list[self.entity_id]["tags"]["DAMAGE"]}")
+                    except KeyError:
+                        pass
+                if tag == "DEFENDING" and value != "0":
+                    try:
+                        if self.card_code_to_name(self.entity_list[self.entity_id]["CardID"]) != None:
+                            print("DEFENDING", self.card_code_to_name(self.entity_list[self.entity_id]["CardID"]),f"{self.entity_list[self.entity_id]["tags"]["ATK"]}/{self.entity_list[self.entity_id]["tags"]["HEALTH"]} dmg={self.entity_list[self.entity_id]["tags"]["DAMAGE"]}")
+                    except KeyError:
+                        pass
+                if tag == "MULLIGAN_STATE":
+                    self.player = self.entity_id
+
             elif log_type == "META_DATA":
                 self.current_block = "META_DATA"
             elif log_type == "SUB_SPELL_START":
@@ -219,24 +253,40 @@ class parser:
         return self.games
     
     def print_results(self):
+        if len(self.players_heroes) == 0:
+            return
         self.print_players()
-        leaderboard_with_names = [self.card_code_to_name(i) for i in self.leaderboard]
-        print(leaderboard_with_names)
-        players_heroes_with_names = {key: self.card_code_to_name(value) for key, value in self.players_heroes.items()}
-        print(players_heroes_with_names)
+        print(self.players_heroes)
+        print(self.leaderboard)
         print("FINAL LEADERBOARD")
-        for i in leaderboard_with_names:
-            if i != "-":
-                hero = i
-                player = next((key for key, value in players_heroes_with_names.items() if value == hero), None)
-                if player:
-                    print(leaderboard_with_names.index(i), hero, player)
+        print("-------------------------------------------------")
+        print(self.player)
+        print(self.entity_list[self.player]["tags"]["PLAYSTATE"])
+        print("-------------------------------------------------")
+        to_print = []
+        heroes_players = {value: key for key, value in self.players_heroes.items()}
+        place = 1
+        for i in self.leaderboard:
+            if i == 0:
+                continue
+
+            try:
+                to_print.append(f"{place}, {heroes_players[i]}, {i}")
+            except Exception:
+                to_print.append(f"{place}, {i}")
+            place += 1
+        to_print.sort()
+        for i in to_print:
+            print(i)
+        print("-------------------------------------------------")
         with open("entity_list.json", 'w') as jf:
             json.dump(self.entity_list, jf, indent=4)
         
     
     def test_run(self):
         logs = []
+        with open("leaderboard.txt", 'w') as lf:
+            pass
         with open(self.log_path, 'r',encoding='utf-8') as f:
             for line in f:
                 logs.append(line)
