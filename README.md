@@ -1,5 +1,9 @@
 # ⚠️⚠️⚠️ work in progress ⚠️⚠️⚠️
 
-bg_log_parser.py  is main file for interpreting hearthstone battlegrounds logs.
+look at code at your own risk
 
-detect_log_file.py searches for the log file in the default location and prints logs live
+but... 
+log_parser.py converts hearthstone logs into entity list in json, where every entity have own tag
+detect_log_file.py creates window that show current logs from file which hearthstone uses
+
+if doesnt work - check hearthstone path
