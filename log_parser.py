@@ -1,31 +1,57 @@
 import re
 import json
+import requests
+
+def get_card_names(url="https://api.hearthstonejson.com/v1/latest/enUS/cards.json"):
+    cards_dict = requests.get(url)
+    cards_dict.raise_for_status()
+    return cards_dict.json()
+
+def card_code_to_name(cardnames,card_id):
+    for card in cardnames:
+        if card["id"]==card_id:
+            return card["name"]
+    return "-"
 
 def print_players(entity_list):
     players_keys = []
-    heroes = []
     for entity in entity_list:
         try:
-            hero = entity_list[entity]["tags"]["HERO_ENTITY"]
+            _ = entity_list[entity]["tags"]["HERO_ENTITY"]
             players_keys.append(entity_list[entity]["ID"])
         except KeyError:
             ...
     print("------------------------------------")
     for p in players_keys:
         try:
-            hero = entity_list[p]["tags"]["HERO_ENTITY"]
-            heroes.append(hero)
-            print(f"{p} {hero}")
+            v = entity_list[p]["tags"]["NUM_TURNS_IN_PLAY"]
+            print(f"{p} {v}")
         except KeyError:
             ...
-            
+
+def get_hero(entity_id,entity_list):
+    try:
+        card_type = entity_list[entity_id]["tags"]["CARDTYPE"]
+        if card_type == "HERO":
+            return entity_list[entity_id]["CardID"]
+    except Exception:
+        return None
+    return None
+    
+
+
 
 def parse_lines(logs):
+    cardnames = get_card_names()
     i = 0
     current_block = ""
     entity_list = {}
     entity_id = 0
     games = []
+    block_started = False
+    block_type = ""
+    leaderboard = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] #so long for duo
+    players_heroes = {}
     for log in logs:
         try:
             meta,data = log.split("() - ")
@@ -95,8 +121,22 @@ def parse_lines(logs):
                         ...
                 elif log_type == "BLOCK_START":
                     current_block = "BLOCK_START"
+                    block_started = True
+                    match = re.search(r'BlockType=(\w+).*?id=(\d+)', data_stripped)
+                    if match:
+                        block_type = match.group(1)
+                        entity_id = match.group(2)
+                    else:
+                        continue
+
+                    if block_type == "ATTACK":
+                        hero = get_hero(entity_id,entity_list)
+                        if hero != None:
+                            print("ATK",hero)
                 elif log_type == "BLOCK_END\n":
                     current_block = "BLOCK_END"
+                    if block_started:
+                        ...
                 elif log_type == "FULL_ENTITY":
                     if data_stripped.split(" ")[2] == "Updating":
                         current_block = "FULL_ENTITY - Updating"
@@ -160,9 +200,17 @@ def parse_lines(logs):
 
                     if tag == "PLAYER_LEADERBOARD_PLACE" and value!="0":
                         hero = entity_list[entity_id]["CardID"]
+                        
                         #print("L",entity_id,value,hero)
+                        try:
+                            leaderboard[int(value)] = hero
+                        except Exception:
+                            pass
+                        #print(leaderboard)
                     if tag == "HERO_ENTITY":
                         print("HERO",entity_id,value)
+                        if value != "62":
+                            players_heroes[entity_id] = entity_list[value]["CardID"]
                     if tag == "PLAYSTATE":
                         try:
                             print("PLAY",entity_id,value,entity_list[entity_id]["tags"]["HERO_ENTITY"])
@@ -181,6 +229,8 @@ def parse_lines(logs):
                             print("DMG",hero,entity_id,value)
                         except Exception:
                             pass
+                    if tag=="STATE" and entity_id=="GameEntity":
+                        print("GAME STATE:",value)
                     
 # TAG CHECK END ---------------------------------------
                 elif log_type == "META_DATA":
@@ -209,6 +259,19 @@ def parse_lines(logs):
         except Exception as e:
             raise e
     print_players(entity_list)
+    leaderboard_with_names = [card_code_to_name(cardnames,i) for i in leaderboard]
+    print(leaderboard_with_names)
+    players_heroes_with_names = {key: card_code_to_name(cardnames,value) for key, value in players_heroes.items()}
+    print(players_heroes_with_names)
+    print("FINAL LEADERBOARD")
+    for i in leaderboard_with_names:
+        if i != "-":
+            hero = i
+            for key,value in players_heroes_with_names.items():
+                if value == hero:
+                    player = key
+                    break
+            print(leaderboard_with_names.index(i),hero,player)
     with open("entity_list.json", 'w') as jf:
         json.dump(entity_list,jf, indent=4)
     games.append(entity_list)

@@ -3,6 +3,8 @@ import glob
 import time
 import tkinter as tk
 import threading
+import requests
+
 
 
 def watch_log_file(file_path, text_widget):
@@ -44,6 +46,7 @@ def create_window(file_path):
     root.mainloop()
 
 if __name__ == "__main__":
+    url = "https://api.hearthstonejson.com/v1/latest/enUS/cards.json"
     path = 'C:\\Program Files (x86)\\Hearthstone\\Logs'
     path = get_latest_folder(path)
     path = path + "\\Power.log"
