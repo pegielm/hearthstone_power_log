@@ -4,7 +4,7 @@ import requests
 
 
 class parser:
-    def __init__(self, log_path="Power.log"):
+    def __init__(self, log_path="data/Power.log"):
         self.log_path = log_path
         self.cardnames = self.get_card_names()
         self.games = []
@@ -51,6 +51,7 @@ class parser:
         return None
     
     def reset_game(self):
+        self.games.append(self.entity_list)
         self.entity_list = {}
         self.leaderboard = [0] * 17
         self.players_heroes = {}
@@ -249,7 +250,7 @@ class parser:
     def parse_lines(self, logs):
         for log in logs:
             self.parse_line(log)
-        self.games.append(self.entity_list)
+        
         return self.games
     
     def print_results(self):
@@ -292,7 +293,7 @@ class parser:
                 logs.append(line)
         games = self.parse_lines(logs)
         self.print_results()
-        with open("final.json", 'w') as final:
+        with open("games.json", 'w') as final:
             json.dump(games, final, indent=4)
 
 if __name__ == "__main__":
